@@ -45,6 +45,69 @@ reports are created automatically on first backend start.
 
 ---
 
+## Production deployment (Vercel + Render)
+
+The app is **two services**: a Next.js frontend and a Python FastAPI backend.
+Vercel runs only the frontend — it cannot host the FastAPI/SQLite backend — so
+the backend must be deployed separately (Render, Railway, Fly.io, any host
+that runs uvicorn). The frontend then calls it via `NEXT_PUBLIC_API_BASE_URL`.
+
+### 1) Deploy the FastAPI backend (Render example)
+
+1. Push this repo to GitHub. In Render: **New → Web Service**, pick the repo.
+2. Settings:
+   - **Root Directory**: `backend`
+   - **Runtime**: Python 3.11+ (set env var `PYTHON_VERSION=3.12.4` on Render)
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+3. Environment variables (see `backend/.env.example`):
+   - `CORS_ORIGINS=https://<your-app>.vercel.app` (comma-separate extra origins,
+     e.g. the preview URLs)
+   - `LLM_API_KEY=` — leave empty for Demo Mode (recommended for the prototype)
+   - `FS_DB_PATH=` — optional; point at a persistent disk, otherwise demo data
+     re-seeds on every deploy/restart
+4. Deploy. Verify: `curl https://<backend-host>/api/fs/health` returns
+   `{"status":"ok",...}` and `POST /api/fs/auth/login` accepts a demo account.
+
+Railway/Fly.io equivalent: build from `backend/`, install `requirements.txt`,
+start with `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+
+### 2) Deploy the frontend on Vercel
+
+1. In Vercel: **Add New → Project**, import the same repo (framework auto-set
+   to Next.js; build command `npm run build` works as-is).
+2. Environment Variables (Project → Settings → Environment Variables),
+   required for Production **and** Preview:
+   - `NEXT_PUBLIC_API_BASE_URL=https://<backend-host>` — the backend origin
+     from step 1, **no trailing slash**, **no** `/api/fs` suffix
+3. Deploy, then verify:
+   - the Sign In buttons return a workspace (no "Request failed (404)")
+   - browser DevTools → Network shows login going to
+     `https://<backend-host>/api/fs/auth/login` (not `/api/fs` on the Vercel
+     domain, and no `localhost`/`127.0.0.1` anywhere)
+
+> `NEXT_PUBLIC_*` variables are inlined at build time — after adding or
+> changing one, **redeploy** so the new value reaches the browser bundle.
+
+### 3) Local development (unchanged)
+
+Nothing to configure: leave `NEXT_PUBLIC_API_BASE_URL` unset and run
+`./start.sh`. Requests stay same-origin `/api/fs/...` and the Next.js rewrite
+(`next.config.ts`, override target with `FS_API_ORIGIN`) proxies them to
+`127.0.0.1:8000`.
+
+### Environment variables summary
+
+| Variable | Where | Required | Purpose |
+|---|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | Vercel (frontend) | Yes in production | Absolute origin of the FastAPI backend |
+| `FS_API_ORIGIN` | Frontend host | No | Rewrite target for self-hosted proxying (default `http://127.0.0.1:8000`) |
+| `CORS_ORIGINS` | Backend host | Yes in production | Comma-separated allowed origins (Vercel domain(s)) |
+| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | Backend host | No | Live AI mode; empty key = Demo Mode |
+| `FS_DB_PATH` | Backend host | No | SQLite path (persistent disk in production) |
+
+---
+
 ## Demo accounts
 
 | Persona        | Email                    | Password    | Sees |
@@ -128,8 +191,11 @@ Works with any OpenAI-compatible endpoint (`LLM_BASE_URL` / `LLM_MODEL`).
 └── README.md
 ```
 
-Frontend calls stay on relative `/api/fs/...` URLs; `next.config.ts` rewrites
-them to `127.0.0.1:8000`, so no CORS setup is needed.
+In **local development** frontend calls stay on relative `/api/fs/...` URLs;
+`next.config.ts` rewrites them to `127.0.0.1:8000`, so no CORS setup is needed.
+In **production** the frontend calls the backend directly via
+`NEXT_PUBLIC_API_BASE_URL` and the backend allows those origins via
+`CORS_ORIGINS` (see *Production deployment* above).
 
 ---
 
@@ -156,6 +222,8 @@ The platform is decision-support only and deliberately enforces:
 | Symptom | Fix |
 |---|---|
 | Login says *Internal Server Error* | Backend not running — start it (`cd backend && python3 -m uvicorn main:app --port 8000`) and retry. |
+| **Deployed** login says *Request failed (404)* | `NEXT_PUBLIC_API_BASE_URL` missing/wrong on Vercel — set it to the backend origin (no trailing slash) and **redeploy**. |
+| **Deployed** login says *Failed to fetch* / CORS error | Add the Vercel origin to `CORS_ORIGINS` on the backend host and restart it. |
 | Port 8000 already in use | `uvicorn main:app --port 8001`, then change the destination in `next.config.ts` and `PORT` in `src/lib/finsight/api.ts`. |
 | `pip install` fails for pymupdf/pdfplumber | Ensure Python 3.10+ and pip upgraded: `python3 -m pip install -U pip`. |
 | Charts look broken | Hard-refresh the browser; dev-mode Recharts needs a moment on first paint. |

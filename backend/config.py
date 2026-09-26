@@ -26,6 +26,12 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 
 AI_ENABLED = bool(LLM_API_KEY)
 
+# CORS: comma-separated list of allowed browser origins for the deployed
+# frontend, e.g. "https://finsight.vercel.app,https://finsight-git-main.vercel.app".
+# Default "*" keeps local development and previews working with zero config.
+_CORS = os.getenv("CORS_ORIGINS", "*").strip()
+ALLOWED_ORIGINS = ["*"] if _CORS in ("", "*") else [o.strip() for o in _CORS.split(",") if o.strip()]
+
 DB_PATH = os.getenv("FS_DB_PATH", str(Path(__file__).resolve().parent.parent / "db" / "finsight.db"))
 SAMPLE_DIR = Path(__file__).resolve().parent / "sample_reports"
 UPLOAD_DIR = Path(__file__).resolve().parent / "uploads"

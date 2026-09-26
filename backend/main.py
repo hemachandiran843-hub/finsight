@@ -18,14 +18,17 @@ import analysis as A
 import database as DB
 import demo_data as D
 import pdf_utils
-from config import AI_ENABLED, MAX_UPLOAD_MB, SAMPLE_DIR, UPLOAD_DIR
+from config import AI_ENABLED, ALLOWED_ORIGINS, MAX_UPLOAD_MB, SAMPLE_DIR, UPLOAD_DIR
 from llm import chat, summarize_report
 from sample_reports import generate_all, extract_pages_cache
 from security import ROLE_LABELS, can, issue_token, verify_password, verify_token
 
 app = FastAPI(title="FinSight X API", version="1.0.0")
+# CORS: in production the Vercel frontend calls this API cross-origin, so the
+# deployed frontend origin(s) must be allowed. Set CORS_ORIGINS in the backend
+# environment (comma-separated). Default "*" keeps local dev working as before.
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["*"], allow_headers=["*"],
 )
 
 EV_BY_METRIC = {
